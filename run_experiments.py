@@ -233,22 +233,27 @@ if __name__ == '__main__':
             tokenizer = GPT2Tokenizer.from_pretrained(model_name)
             num_layers = model.config.n_layer
 
-        if os.path.exists(wiki_cache_path):
-            wiki_df = pd.read_pickle(wiki_cache_path)
-        else:
-            wiki_df = get_examples_df_with_pred(debug=args.debug,
-                                                idioms_path=args.wiki_data_path,
-                                                model=model,
-                                                tokenizer=tokenizer,
-                                                use_first_subword_token=True,
-                                                sample_size=args.batch_size,
-                                                save_keys=False,
-                                                bert_model=('bert' in model_name)
-                                                )
-            wiki_df.to_pickle(wiki_cache_path)
+        if args.wiki_data_path is not None:
+            if os.path.exists(wiki_cache_path):
+                wiki_df = pd.read_pickle(wiki_cache_path)
+            else:
+                wiki_df = get_examples_df_with_pred(debug=args.debug,
+                                                    idioms_path=args.wiki_data_path,
+                                                    model=model,
+                                                    tokenizer=tokenizer,
+                                                    use_first_subword_token=True,
+                                                    sample_size=args.batch_size,
+                                                    save_keys=False,
+                                                    bert_model=('bert' in model_name)
+                                                    )
+                wiki_df.to_pickle(wiki_cache_path)
 
-        wiki_df['subset'] = "wiki"
-        df_list = [wiki_df]
+            wiki_df['subset'] = "wiki"
+            df_list = [wiki_df]
+
+        else:
+            df_list = []
+        
         for dataset in dataset_list:
             if torch.cuda.is_available():
                 model.cuda()
