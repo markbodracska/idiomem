@@ -235,7 +235,7 @@ if __name__ == '__main__':
         else: # pythia models
             model = GPTNeoXForCausalLM.from_pretrained(f"EleutherAI/{model_name}")
             tokenizer = AutoTokenizer.from_pretrained(f"EleutherAI/{model_name}")
-            num_layers = model.config.n_layer
+            num_layers = model.config.num_hidden_layers
 
         if args.wiki_data_path is not None:
             if os.path.exists(wiki_cache_path):
