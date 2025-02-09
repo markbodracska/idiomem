@@ -3,7 +3,7 @@ from matplotlib import pyplot as plt
 import random
 import os, re
 import argparse
-from transformers import GPT2Tokenizer, GPT2LMHeadModel, AutoTokenizer, AutoModelForMaskedLM
+from transformers import GPT2Tokenizer, GPT2LMHeadModel, AutoTokenizer, AutoModelForMaskedLM, GPTNeoXForCausalLM
 import pandas as pd
 import torch
 
@@ -228,9 +228,13 @@ if __name__ == '__main__':
             model = AutoModelForMaskedLM.from_pretrained(model_name)
             tokenizer = AutoTokenizer.from_pretrained(model_name)
             num_layers = model.config.num_hidden_layers
-        else:
+        elif ('gpt2' in model_name):
             model = GPT2LMHeadModel.from_pretrained(model_name)
             tokenizer = GPT2Tokenizer.from_pretrained(model_name)
+            num_layers = model.config.n_layer
+        else: # pythia models
+            model = GPTNeoXForCausalLM.from_pretrained(f"EleutherAI/{model_name}")
+            tokenizer = AutoTokenizer.from_pretrained(f"EleutherAI/{model_name}")
             num_layers = model.config.n_layer
 
         if args.wiki_data_path is not None:
