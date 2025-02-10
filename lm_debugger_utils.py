@@ -78,6 +78,57 @@ def set_hooks_gpt2(model):
     model.transformer.ln_f.register_forward_hook(get_activation("layer_residual_" + str(final_layer)))
 
 
+def set_hooks_pythia(model):
+    final_layer = model.config.num_hidden_layers - 1
+
+    for attr in ["activations_"]:
+        if not hasattr(model, attr):
+            setattr(model, attr, {})
+
+    def get_activation(name):
+        def hook(module, input, output):
+            if "mlp" in name or "attn" in name or "m_coef" in name or "m_tag_coef" in name:
+                if "attn" in name:
+                    num_tokens = list(output[0].size())[1]
+                    model.activations_[name] = output[0][:, num_tokens - 1].detach()
+                elif "mlp" in name:
+                    num_tokens = list(output[0].size())[0]  # [num_tokens, 3072] for values;
+                    model.activations_[name] = output[0][num_tokens - 1].detach()
+                elif "m_coef" in name:
+                    num_tokens = list(input[0].size())[1]  # (batch, sequence, hidden_state)
+                    model.activations_[name] = input[0][:, num_tokens - 1].detach()
+                elif "m_tag_coef" in name:
+                    num_tokens = list(input[0].size())[1]  # (batch, sequence, hidden_state)
+                    model.activations_[name] = output[0][num_tokens - 1].detach()
+
+            elif "residual" in name or "embedding" in name:
+                num_tokens = list(input[0].size())[1]  # (batch, sequence, hidden_state)
+                if name == "layer_residual_" + str(final_layer):
+                    model.activations_[name] = model.activations_["intermediate_residual_" + str(final_layer)] + \
+                                               model.activations_["mlp_" + str(final_layer)]
+                else:
+                    model.activations_[name] = input[0][:,
+                                               num_tokens - 1].detach()  # https://github.com/huggingface/transformers/issues/7760
+
+        return hook
+
+    model.transformer.h[0].ln_1.register_forward_hook(get_activation("input_embedding"))
+
+    for i in range(model.config.n_layer):
+        if i != 0:
+            model.transformer.h[i].ln_1.register_forward_hook(get_activation("layer_residual_" + str(i - 1)))
+        model.transformer.h[i].ln_2.register_forward_hook(get_activation("intermediate_residual_" + str(i)))
+
+        model.transformer.h[i].attn.register_forward_hook(get_activation("attn_" + str(i)))
+        model.transformer.h[i].mlp.register_forward_hook(get_activation("mlp_" + str(i)))
+        model.transformer.h[i].mlp.c_proj.register_forward_hook(get_activation("m_coef_" + str(i)))
+        model.transformer.h[i].mlp.c_fc.register_forward_hook(get_activation("m_tag_coef_" + str(i)))
+
+    model.transformer.ln_f.register_forward_hook(get_activation("layer_residual_" + str(final_layer)))
+
+
+
+
 def set_control_hooks_gpt2(model, values_per_layer, coef_value=0):
     def change_values(values, coef_val):
         def hook(module, input, output):
@@ -374,7 +425,7 @@ def get_preds_and_hidden_states_bert(prompts, bert_model, bert_tokenizer,
     return sent_to_hidden_states, sent_to_preds
 
 
-def get_preds_and_hidden_states(prompts, gpt2_model, gpt2_tokenizer,
+def get_preds_and_hidden_states_gpt2(prompts, gpt2_model, gpt2_tokenizer,
                                 target_tokens=None, knockouts=None):
     set_hooks_gpt2(gpt2_model)
 
@@ -427,6 +478,60 @@ def get_preds_and_hidden_states(prompts, gpt2_model, gpt2_tokenizer,
 
     return sent_to_hidden_states, sent_to_preds
 
+def get_preds_and_hidden_states_pythia(prompts, pythia_model, pythia_tokenizer,
+                                target_tokens=None, knockouts=None):
+    set_hooks_pythia(pythia_model)
+
+    sent_to_preds = {}
+    sent_to_hidden_states = {}
+
+    for prompt_i, prompt in tqdm(enumerate(prompts)):
+        if target_tokens is not None:
+            target_token = target_tokens[prompt]    # [prompt_i]
+        else:
+            target_token = None
+
+        # add knockout hooks
+        if knockouts is not None:
+            hooks = set_control_hooks_gpt2(pythia_model, knockouts[prompt])
+        else:
+            hooks = []
+
+        get_resid_predictions(pythia_model, pythia_tokenizer, prompt, TOP_K=10, target_token=target_token)
+
+        # remove knockout hook
+        remove_hooks(hooks)
+
+        if prompt not in sent_to_preds.keys():
+            sent_to_preds[prompt] = {}
+
+        sent_to_preds[prompt]["pred_token"] = pythia_model.pred_token
+
+        sent_to_preds[prompt]["layer_resid_preds"] = pythia_model.layer_resid_preds
+        sent_to_preds[prompt]["intermed_residual_preds"] = pythia_model.intermed_residual_preds
+        sent_to_preds[prompt]["mlp_preds"] = pythia_model.mlp_preds
+
+        sent_to_preds[prompt]["layer_resid_pred_ranks"] = pythia_model.layer_resid_pred_ranks
+        sent_to_preds[prompt]["intermed_residual_pred_ranks"] = pythia_model.intermed_residual_pred_ranks
+        sent_to_preds[prompt]["mlp_pred_ranks"] = pythia_model.mlp_pred_ranks
+
+        sent_to_preds[prompt]["layer_resid_pred_probs"] = pythia_model.layer_resid_pred_probs
+        sent_to_preds[prompt]["intermed_residual_pred_probs"] = pythia_model.intermed_residual_pred_probs
+        sent_to_preds[prompt]["mlp_pred_scores"] = pythia_model.mlp_pred_scores
+
+        sent_to_preds[prompt]["layer_resid_target_ranks"] = pythia_model.layer_resid_target_ranks
+        sent_to_preds[prompt]["intermed_residual_target_ranks"] = pythia_model.intermed_residual_target_ranks
+        sent_to_preds[prompt]["mlp_target_ranks"] = pythia_model.mlp_target_ranks
+
+        sent_to_preds[prompt]["layer_resid_target_probs"] = pythia_model.layer_resid_target_probs
+        sent_to_preds[prompt]["intermed_residual_target_probs"] = pythia_model.intermed_residual_target_probs
+        sent_to_preds[prompt]["mlp_target_scores"] = pythia_model.mlp_target_scores
+
+        sent_to_hidden_states[prompt] = pythia_model.activations_.copy()
+
+    return sent_to_hidden_states, sent_to_preds
+
+
 FILTER_SUBWORDS= False
 
 
@@ -465,7 +570,100 @@ def process_preds_and_hidden_states_bert(sent_to_hidden_states, sent_to_preds,
     return records
 
 
-def process_preds_and_hidden_states(sent_to_hidden_states, sent_to_preds,
+def process_preds_and_hidden_states_gpt2(sent_to_hidden_states, sent_to_preds,
+                                    model, tokenizer, top_k, targets_info=None ,save_keys = True ):
+    records = []
+    for sent_i, sent in tqdm(enumerate(sent_to_preds.keys())):
+        top_coef_idx = []
+        top_coef_vals = []
+        residual_preds_probs = []
+        residual_preds_tokens = []
+        layer_preds_probs = []
+        layer_preds_tokens = []
+        mlp_preds_probs = []
+        mlp_preds_tokens = []
+        m_coefs_all = []
+        m_tag_coefs_all = []
+
+        keys = model.state_dict()[f'transformer.h.1.mlp.c_fc.weight'].cpu().numpy()
+        keys = np.linalg.norm(keys, axis=0)
+        for LAYER in range(model.config.n_layer):
+            coefs_ = []
+            m_coefs = sent_to_hidden_states[sent]["m_coef_" + str(LAYER)].squeeze(0).cpu().numpy()
+            if save_keys:
+                m_coefs_all.append(m_coefs/keys)
+                m_tag_coefs = sent_to_hidden_states[sent]["m_tag_coef_" + str(LAYER)].squeeze(0).cpu().numpy()
+                m_tag_coefs_all.append(m_tag_coefs)
+
+            value_norms = torch.linalg.norm(model.transformer.h[LAYER].mlp.c_proj.weight.data, dim=1)
+            scaled_coefs = np.absolute(m_coefs) * value_norms.cpu().numpy()
+            for index, prob in enumerate(scaled_coefs):
+                coefs_.append((index, prob))
+
+            top_values = sorted(coefs_, key=lambda x: x[1], reverse=True)[:top_k]
+            c_idx, c_vals = zip(*top_values)
+            top_coef_idx.append(c_idx)
+            top_coef_vals.append(c_vals)
+
+            residual_p_probs, residual_p_tokens = zip(*sent_to_preds[sent]['intermed_residual_preds'][LAYER])
+            residual_preds_probs.append(residual_p_probs)
+            residual_preds_tokens.append(residual_p_tokens)
+
+            layer_p_probs, layer_p_tokens = zip(*sent_to_preds[sent]['layer_resid_preds'][LAYER])
+            layer_preds_probs.append(layer_p_probs)
+            layer_preds_tokens.append(layer_p_tokens)
+
+            mlp_p_probs, mlp_p_tokens = zip(*sent_to_preds[sent]['mlp_preds'][LAYER])
+            mlp_preds_probs.append(mlp_p_probs)
+            mlp_preds_tokens.append(mlp_p_tokens)
+
+        record = {
+            "prompt": sent,
+            "pred": tokenizer.decode(sent_to_preds[sent]['pred_token']),
+            "pred_token": sent_to_preds[sent]['pred_token'],
+            "residual_target_ranks": sent_to_preds[sent]['intermed_residual_target_ranks'],
+            "layer_target_ranks": sent_to_preds[sent]['layer_resid_target_ranks'],
+            "mlp_target_ranks": sent_to_preds[sent]['mlp_target_ranks'],
+            "residual_target_probs": sent_to_preds[sent]['intermed_residual_target_probs'],
+            "layer_target_probs": sent_to_preds[sent]['layer_resid_target_probs'],
+            "mlp_target_scores": sent_to_preds[sent]['mlp_target_scores'],
+            "residual_pred_ranks": sent_to_preds[sent]['intermed_residual_pred_ranks'],
+            "layer_pred_ranks": sent_to_preds[sent]['layer_resid_pred_ranks'],
+            "mlp_pred_ranks": sent_to_preds[sent]['mlp_pred_ranks'],
+            "residual_pred_probs": sent_to_preds[sent]['intermed_residual_pred_probs'],
+            "layer_pred_probs": sent_to_preds[sent]['layer_resid_pred_probs'],
+            "mlp_pred_scores": sent_to_preds[sent]['mlp_pred_scores'],
+            "top_coef_idx": top_coef_idx,
+            "top_coef_vals": top_coef_vals,
+            "residual_preds_probs": residual_preds_probs,
+            "residual_preds_tokens": residual_preds_tokens,
+            "layer_preds_probs": layer_preds_probs,
+            "layer_preds_tokens": layer_preds_tokens,
+            "mlp_preds_probs": mlp_preds_probs,
+            "mlp_preds_tokens": mlp_preds_tokens,
+
+        }
+        if save_keys:
+            record["m_coefs"] = np.stack(m_coefs_all)
+            record["m_tag_coefs"] = np.stack(m_tag_coefs_all)
+        if targets_info is not None:
+            if FILTER_SUBWORDS and not targets_info["targets"][sent].startswith(' '):
+                continue
+
+            record.update({
+                "target": targets_info["targets"][sent],
+                "target_token": targets_info["target_tokens"][sent],
+                "is_subword": not targets_info["targets"][sent].startswith(' ')
+            })
+            if "full_targets" in targets_info.keys():
+                record["full_target"] = targets_info["full_targets"][sent]
+
+        records.append(record)
+
+    return records
+
+
+def process_preds_and_hidden_states_pythia(sent_to_hidden_states, sent_to_preds,
                                     model, tokenizer, top_k, targets_info=None ,save_keys = True ):
     records = []
     for sent_i, sent in tqdm(enumerate(sent_to_preds.keys())):
@@ -588,7 +786,7 @@ def get_examples_df_bert(idioms, model, tokenizer, top_k=100, target_first_subto
     return df
 
 
-def get_examples_df(idioms, model, tokenizer, top_k=100, target_first_subtoken=False,save_keys = True):
+def get_examples_df_gpt2(idioms, model, tokenizer, top_k=100, target_first_subtoken=False,save_keys = True):
     prompts = []
     targets = {}
     target_tokens = {}
@@ -607,24 +805,54 @@ def get_examples_df(idioms, model, tokenizer, top_k=100, target_first_subtoken=F
         target_tokens[prompt] = tokens[token_idx]
         full_targets[prompt] = tokenizer.decode(tokens[token_idx:])
 
-    sent_to_hidden_states, sent_to_preds = get_preds_and_hidden_states(prompts, model, tokenizer,
+    sent_to_hidden_states, sent_to_preds = get_preds_and_hidden_states_gpt2(prompts, model, tokenizer,
                                                                        target_tokens=target_tokens)
 
     targets_info = {"targets": targets, "target_tokens": target_tokens, "full_targets": full_targets}
-    records = process_preds_and_hidden_states(sent_to_hidden_states, sent_to_preds,
+    records = process_preds_and_hidden_states_gpt2(sent_to_hidden_states, sent_to_preds,
                                               model, tokenizer, top_k, targets_info, save_keys = save_keys)
 
     df = pd.DataFrame(records)
     return df
 
 
-def get_examples_df_for_prompts(prompts, targets_info, model, tokenizer,
+def get_examples_df_pythia(idioms, model, tokenizer, top_k=100, target_first_subtoken=False,save_keys = True):
+    prompts = []
+    targets = {}
+    target_tokens = {}
+    full_targets = {}
+    for tokens in tokenizer(idioms)['input_ids']:
+        token_idx = -1
+
+        if target_first_subtoken:
+            while not tokenizer.decode(tokens[token_idx]).startswith(' '):
+                token_idx -= 1
+
+        prompt = tokenizer.decode(tokens[:token_idx])
+        prompts.append(prompt)
+
+        targets[prompt] = tokenizer.decode(tokens[token_idx])
+        target_tokens[prompt] = tokens[token_idx]
+        full_targets[prompt] = tokenizer.decode(tokens[token_idx:])
+
+    sent_to_hidden_states, sent_to_preds = get_preds_and_hidden_states_pythia(prompts, model, tokenizer,
+                                                                       target_tokens=target_tokens)
+
+    targets_info = {"targets": targets, "target_tokens": target_tokens, "full_targets": full_targets}
+    records = process_preds_and_hidden_states_pythia(sent_to_hidden_states, sent_to_preds,
+                                              model, tokenizer, top_k, targets_info, save_keys = save_keys)
+
+    df = pd.DataFrame(records)
+    return df
+
+
+def get_examples_df_for_prompts_gpt2(prompts, targets_info, model, tokenizer,
                                 top_k=100, knockout_config=None,save_keys = True):
-    sent_to_hidden_states, sent_to_preds = get_preds_and_hidden_states(prompts, model, tokenizer,
+    sent_to_hidden_states, sent_to_preds = get_preds_and_hidden_states_gpt2(prompts, model, tokenizer,
                                                                        target_tokens=targets_info["target_tokens"],
                                                                        knockouts=knockout_config)
 
-    records = process_preds_and_hidden_states(sent_to_hidden_states, sent_to_preds,
+    records = process_preds_and_hidden_states_gpt2(sent_to_hidden_states, sent_to_preds,
                                               model, tokenizer, top_k, targets_info,save_keys = save_keys)
 
     df = pd.DataFrame(records)

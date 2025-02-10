@@ -7,7 +7,7 @@ from transformers import GPT2Tokenizer, GPT2LMHeadModel, AutoTokenizer, AutoMode
 import pandas as pd
 import torch
 
-from lm_debugger_utils import get_examples_df, get_examples_df_bert
+from lm_debugger_utils import get_examples_df_gpt2, get_examples_df_bert, get_examples_df_pythia
 import knockouts
 
 
@@ -73,12 +73,11 @@ def parse_args():
     return parser.parse_args()
 
 
-def get_examples_df_with_pred(debug, idioms_path, model, tokenizer, sample_size=-1,
+def get_examples_df_with_pred(debug, idioms_path, model, tokenizer, model_type, sample_size=-1,
                               start_sample_idx=0,use_first_subword_token=False,
                               lowercase=False,
                               filters=None,
-                              save_keys=True,
-                              bert_model=False):
+                              save_keys=True):
     dfi = pd.read_json(idioms_path, lines=True)
     if 'prompt' not in dfi.columns:
         dfi['prompt'] = dfi['idiom']
@@ -90,10 +89,13 @@ def get_examples_df_with_pred(debug, idioms_path, model, tokenizer, sample_size=
     random.shuffle(idioms)
 
     df = None
-    if bert_model:
+    if model_type == 'bert':
         df = get_examples_df_bert(idioms, model, tokenizer, target_first_subtoken=use_first_subword_token)
+    elif model_type == 'gpt2':
+        df = get_examples_df_gpt2(idioms, model, tokenizer, target_first_subtoken=use_first_subword_token,
+                                    save_keys=save_keys)
     else:
-        df = get_examples_df(idioms, model, tokenizer, target_first_subtoken=use_first_subword_token,
+        df = get_examples_df_pythia(idioms, model, tokenizer, target_first_subtoken=use_first_subword_token,
                                     save_keys=save_keys)
 
         # df = pd.concat([df, df_tmp], axis=0, ignore_index=True)
