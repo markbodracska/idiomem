@@ -230,14 +230,17 @@ if __name__ == '__main__':
             model = AutoModelForMaskedLM.from_pretrained(model_name)
             tokenizer = AutoTokenizer.from_pretrained(model_name)
             num_layers = model.config.num_hidden_layers
+            model_type = 'bert'
         elif ('gpt2' in model_name):
             model = GPT2LMHeadModel.from_pretrained(model_name)
             tokenizer = GPT2Tokenizer.from_pretrained(model_name)
             num_layers = model.config.n_layer
+            model_type = 'gpt2'
         else: # pythia models
             model = GPTNeoXForCausalLM.from_pretrained(f"EleutherAI/{model_name}")
             tokenizer = AutoTokenizer.from_pretrained(f"EleutherAI/{model_name}")
             num_layers = model.config.num_hidden_layers
+            model_type = 'pythia'
 
         if args.wiki_data_path is not None:
             if os.path.exists(wiki_cache_path):
@@ -250,7 +253,7 @@ if __name__ == '__main__':
                                                     use_first_subword_token=True,
                                                     sample_size=args.batch_size,
                                                     save_keys=False,
-                                                    bert_model=('bert' in model_name)
+                                                    model_type=model_type
                                                     )
                 wiki_df.to_pickle(wiki_cache_path)
 
@@ -282,7 +285,7 @@ if __name__ == '__main__':
                                            sample_size=args.batch_size,
                                            filters=filters,
                                            save_keys=False,
-                                           bert_model=('bert' in model_name)
+                                           model_type=model_type
                                            )
             print(f"saving for backup all data to {path}")
             df.to_pickle(dataset_beckup_out_path)
