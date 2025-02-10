@@ -63,7 +63,7 @@ def set_hooks_gpt2(model):
 
         return hook
 
-    model.transformer.h[0].ln_1.register_forward_hook(get_activation("input_embedding"))
+    model.gpt_neox.embed_in.register_forward_hook(get_activation("input_embedding"))
 
     for i in range(model.config.n_layer):
         if i != 0:
