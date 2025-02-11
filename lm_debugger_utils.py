@@ -254,9 +254,129 @@ def get_resid_predictions_bert(model, tokenizer, sentence, TOP_K=1,
         model.layer_resid_target_probs = layer_residual_target_probs
 
 
-def get_resid_predictions(model, tokenizer, sentence, TOP_K=1,
+def get_resid_predictions_gpt2(model, tokenizer, sentence, TOP_K=1,
                           start_idx=None, end_idx=None, target_token=None):
     HIDDEN_SIZE = model.config.n_embd
+
+    layer_residual_preds = []
+    intermed_residual_preds = []
+    mlp_preds = []
+
+    layer_residual_pred_ranks = []
+    intermed_residual_pred_ranks = []
+    mlp_pred_ranks = []
+
+    layer_residual_pred_probs = []
+    intermed_residual_pred_probs = []
+    mlp_pred_scores = []
+
+    layer_residual_target_ranks = []
+    intermed_residual_target_ranks = []
+    mlp_target_ranks = []
+
+    layer_residual_target_probs = []
+    intermed_residual_target_probs = []
+    mlp_target_scores = []
+
+    if start_idx is not None and end_idx is not None:
+        tokens = [
+            token for token in sentence.split(' ')
+            if token not in ['', '\n']
+        ]
+
+        sentence = " ".join(tokens[start_idx:end_idx])
+
+    tokens = tokenizer(sentence, return_tensors="pt")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    tokens.to(device)
+
+    output = model(**tokens, output_hidden_states=True)
+    pred_token = output['logits'][0][-1].argmax().item()
+
+    for layer in model.activations_.keys():
+        if "layer_residual" in layer or "intermediate_residual" in layer or "mlp" in layer:
+            if len(model.activations_[layer].shape) == 1:
+                normed = model.transformer.ln_f(torch.unsqueeze(model.activations_[layer], 0))
+            else:
+                normed = model.transformer.ln_f(model.activations_[layer])
+
+            logits = torch.matmul(model.lm_head.weight, normed.T)
+
+            probs = F.softmax(logits.T[0], dim=-1)
+            probs = torch.reshape(probs, (-1,)).detach().cpu().numpy()
+
+            # assert probs add to 1
+            assert np.abs(np.sum(probs) - 1) <= 0.01, str(np.abs(np.sum(probs) - 1)) + layer
+
+            probs_argsort_desc = np.argsort(probs)[::-1]
+
+            top_k = [(probs[t], tokenizer.decode(t)) for t in probs_argsort_desc[:TOP_K]]
+            pred_rank = np.where(probs_argsort_desc == pred_token)[0][0]
+            pred_prob = probs[pred_token]
+            pred_logit = logits.T[0][pred_token].item()
+
+            if target_token is not None:
+                target_rank = np.where(probs_argsort_desc == target_token)[0][0]
+                target_prob = probs[target_token]
+                target_logit = logits.T[0][target_token].item()
+            else:
+                target_rank = -1
+                target_prob = -1
+                target_logit = -1
+
+        if "layer_residual" in layer:
+            layer_residual_preds.append(top_k)
+            layer_residual_pred_ranks.append(pred_rank)
+            layer_residual_pred_probs.append(pred_prob)
+            layer_residual_target_ranks.append(target_rank)
+            layer_residual_target_probs.append(target_prob)
+        elif "intermediate_residual" in layer:
+            intermed_residual_preds.append(top_k)
+            intermed_residual_pred_ranks.append(pred_rank)
+            intermed_residual_pred_probs.append(pred_prob)
+            intermed_residual_target_ranks.append(target_rank)
+            intermed_residual_target_probs.append(target_prob)
+        elif "mlp" in layer:
+            mlp_preds.append(top_k)
+            mlp_pred_ranks.append(pred_rank)
+            mlp_target_ranks.append(target_rank)
+            mlp_pred_scores.append(pred_logit)
+            mlp_target_scores.append(target_logit)
+
+        for attr in ["layer_resid_preds", "intermed_residual_preds", "mlp_preds",
+                     "layer_resid_pred_ranks", "intermed_residual_pred_ranks", "mlp_pred_ranks",
+                     "layer_resid_pred_probs", "intermed_residual_pred_probs", "mlp_pred_scores",
+                     "layer_resid_target_ranks", "intermed_residual_target_ranks", "mlp_target_ranks",
+                     "layer_resid_target_probs", "intermed_residual_target_probs", "mlp_target_scores"]:
+            if not hasattr(model, attr):
+                setattr(model, attr, [])
+
+        model.pred_token = pred_token
+
+        model.layer_resid_preds = layer_residual_preds
+        model.intermed_residual_preds = intermed_residual_preds
+        model.mlp_preds = mlp_preds
+
+        model.layer_resid_pred_ranks = layer_residual_pred_ranks
+        model.intermed_residual_pred_ranks = intermed_residual_pred_ranks
+        model.mlp_pred_ranks = mlp_pred_ranks
+
+        model.layer_resid_pred_probs = layer_residual_pred_probs
+        model.intermed_residual_pred_probs = intermed_residual_pred_probs
+        model.mlp_pred_scores = mlp_pred_scores
+
+        model.layer_resid_target_ranks = layer_residual_target_ranks
+        model.intermed_residual_target_ranks = intermed_residual_target_ranks
+        model.mlp_target_ranks = mlp_target_ranks
+
+        model.layer_resid_target_probs = layer_residual_target_probs
+        model.intermed_residual_target_probs = intermed_residual_target_probs
+        model.mlp_target_scores = mlp_target_scores
+
+
+def get_resid_predictions_pythia(model, tokenizer, sentence, TOP_K=1,
+                          start_idx=None, end_idx=None, target_token=None):
+    HIDDEN_SIZE = model.config.hidden_size
 
     layer_residual_preds = []
     intermed_residual_preds = []
@@ -449,7 +569,7 @@ def get_preds_and_hidden_states_gpt2(prompts, gpt2_model, gpt2_tokenizer,
         else:
             hooks = []
 
-        get_resid_predictions(gpt2_model, gpt2_tokenizer, prompt, TOP_K=10, target_token=target_token)
+        get_resid_predictions_gpt2(gpt2_model, gpt2_tokenizer, prompt, TOP_K=10, target_token=target_token)
 
         # remove knockout hook
         remove_hooks(hooks)
@@ -502,7 +622,7 @@ def get_preds_and_hidden_states_pythia(prompts, pythia_model, pythia_tokenizer,
         else:
             hooks = []
 
-        get_resid_predictions(pythia_model, pythia_tokenizer, prompt, TOP_K=10, target_token=target_token)
+        get_resid_predictions_pythia(pythia_model, pythia_tokenizer, prompt, TOP_K=10, target_token=target_token)
 
         # remove knockout hook
         remove_hooks(hooks)
