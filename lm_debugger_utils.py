@@ -789,7 +789,7 @@ def process_preds_and_hidden_states_gpt2(sent_to_hidden_states, sent_to_preds,
 
 
 def process_preds_and_hidden_states_pythia(sent_to_hidden_states, sent_to_preds,
-                                    model, tokenizer, top_k, targets_info=None ,save_keys = True ):
+                                           model, tokenizer, top_k, targets_info=None, save_keys=True):
     records = []
     for sent_i, sent in tqdm(enumerate(sent_to_preds.keys())):
         top_coef_idx = []
@@ -803,26 +803,33 @@ def process_preds_and_hidden_states_pythia(sent_to_hidden_states, sent_to_preds,
         m_coefs_all = []
         m_tag_coefs_all = []
 
-        keys = model.state_dict()[f'transformer.h.1.mlp.c_fc.weight'].cpu().numpy()
+        # Access the MLP dense_h_to_4h weight (equivalent to c_fc in GPT-2)
+        keys = model.state_dict()['gpt_neox.layers.1.mlp.dense_h_to_4h.weight'].cpu().numpy()
         keys = np.linalg.norm(keys, axis=0)
-        for LAYER in range(model.config.n_layer):
+
+        for LAYER in range(model.config.num_hidden_layers):
             coefs_ = []
-            m_coefs = sent_to_hidden_states[sent]["m_coef_" + str(LAYER)].squeeze(0).cpu().numpy()
+            # Access hidden state activations from sent_to_hidden_states
+            m_coefs = sent_to_hidden_states[sent][f"m_coef_{LAYER}"].squeeze(0).cpu().numpy()
             if save_keys:
-                m_coefs_all.append(m_coefs/keys)
-                m_tag_coefs = sent_to_hidden_states[sent]["m_tag_coef_" + str(LAYER)].squeeze(0).cpu().numpy()
+                m_coefs_all.append(m_coefs / keys)
+                m_tag_coefs = sent_to_hidden_states[sent][f"m_tag_coef_{LAYER}"].squeeze(0).cpu().numpy()
                 m_tag_coefs_all.append(m_tag_coefs)
 
-            value_norms = torch.linalg.norm(model.transformer.h[LAYER].mlp.c_proj.weight.data, dim=1)
+            # Access the projection weight (dense_4h_to_h) equivalent to c_proj in GPT-2
+            value_norms = torch.linalg.norm(model.gpt_neox.layers[LAYER].mlp.dense_4h_to_h.weight.data, dim=1)
             scaled_coefs = np.absolute(m_coefs) * value_norms.cpu().numpy()
+
             for index, prob in enumerate(scaled_coefs):
                 coefs_.append((index, prob))
 
+            # Get the top-k coefficients
             top_values = sorted(coefs_, key=lambda x: x[1], reverse=True)[:top_k]
             c_idx, c_vals = zip(*top_values)
             top_coef_idx.append(c_idx)
             top_coef_vals.append(c_vals)
 
+            # Extract predictions for residuals, layers, and MLP
             residual_p_probs, residual_p_tokens = zip(*sent_to_preds[sent]['intermed_residual_preds'][LAYER])
             residual_preds_probs.append(residual_p_probs)
             residual_preds_tokens.append(residual_p_tokens)
@@ -835,6 +842,7 @@ def process_preds_and_hidden_states_pythia(sent_to_hidden_states, sent_to_preds,
             mlp_preds_probs.append(mlp_p_probs)
             mlp_preds_tokens.append(mlp_p_tokens)
 
+        # Create the record for this sentence
         record = {
             "prompt": sent,
             "pred": tokenizer.decode(sent_to_preds[sent]['pred_token']),
@@ -859,11 +867,12 @@ def process_preds_and_hidden_states_pythia(sent_to_hidden_states, sent_to_preds,
             "layer_preds_tokens": layer_preds_tokens,
             "mlp_preds_probs": mlp_preds_probs,
             "mlp_preds_tokens": mlp_preds_tokens,
-
         }
+
         if save_keys:
             record["m_coefs"] = np.stack(m_coefs_all)
             record["m_tag_coefs"] = np.stack(m_tag_coefs_all)
+
         if targets_info is not None:
             if FILTER_SUBWORDS and not targets_info["targets"][sent].startswith(' '):
                 continue
@@ -873,6 +882,7 @@ def process_preds_and_hidden_states_pythia(sent_to_hidden_states, sent_to_preds,
                 "target_token": targets_info["target_tokens"][sent],
                 "is_subword": not targets_info["targets"][sent].startswith(' ')
             })
+
             if "full_targets" in targets_info.keys():
                 record["full_target"] = targets_info["full_targets"][sent]
 
