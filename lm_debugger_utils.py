@@ -114,18 +114,23 @@ def set_hooks_pythia(model):
 
     model.gpt_neox.embed_in.register_forward_hook(get_activation("input_embedding"))
 
-    for i in range(model.config.n_layer):
+    for i in range(model.config.num_hidden_layers):
         if i != 0:
-            model.transformer.h[i].ln_1.register_forward_hook(get_activation("layer_residual_" + str(i - 1)))
-        model.transformer.h[i].ln_2.register_forward_hook(get_activation("intermediate_residual_" + str(i)))
+            model.gpt_neox.layers[i].input_layernorm.register_forward_hook(
+                get_activation(f"layer_residual_{i - 1}")
+            )
+        model.gpt_neox.layers[i].post_attention_layernorm.register_forward_hook(
+            get_activation(f"intermediate_residual_{i}")
+        )
 
-        model.transformer.h[i].attn.register_forward_hook(get_activation("attn_" + str(i)))
-        model.transformer.h[i].mlp.register_forward_hook(get_activation("mlp_" + str(i)))
-        model.transformer.h[i].mlp.c_proj.register_forward_hook(get_activation("m_coef_" + str(i)))
-        model.transformer.h[i].mlp.c_fc.register_forward_hook(get_activation("m_tag_coef_" + str(i)))
+        model.gpt_neox.layers[i].attention.register_forward_hook(get_activation(f"attn_{i}"))
+        model.gpt_neox.layers[i].mlp.register_forward_hook(get_activation(f"mlp_{i}"))
+        model.gpt_neox.layers[i].mlp.dense_4h_to_h.register_forward_hook(get_activation(f"m_coef_{i}"))
+        model.gpt_neox.layers[i].mlp.dense_h_to_4h.register_forward_hook(get_activation(f"m_tag_coef_{i}"))
 
-    model.transformer.ln_f.register_forward_hook(get_activation("layer_residual_" + str(final_layer)))
-
+    model.gpt_neox.final_layer_norm.register_forward_hook(
+        get_activation(f"layer_residual_{final_layer}")
+    )
 
 
 
