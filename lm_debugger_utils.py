@@ -416,9 +416,9 @@ def get_resid_predictions_pythia(model, tokenizer, sentence, TOP_K=1,
     for layer in model.activations_.keys():
         if "layer_residual" in layer or "intermediate_residual" in layer or "mlp" in layer:
             if len(model.activations_[layer].shape) == 1:
-                normed = model.transformer.ln_f(torch.unsqueeze(model.activations_[layer], 0))
+                normed = model.gpt_neox.final_layer_norm(torch.unsqueeze(model.activations_[layer], 0))
             else:
-                normed = model.transformer.ln_f(model.activations_[layer])
+                normed = model.gpt_neox.final_layer_norm(model.activations_[layer])
 
             logits = torch.matmul(model.lm_head.weight, normed.T)
 
