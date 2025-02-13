@@ -420,7 +420,7 @@ def get_resid_predictions_pythia(model, tokenizer, sentence, TOP_K=1,
             else:
                 normed = model.gpt_neox.final_layer_norm(model.activations_[layer])
 
-            logits = torch.matmul(model.gpt_neox.embed_out.weight, normed.T)
+            logits = torch.matmul(model.embed_out.weight, normed.T)
 
             probs = F.softmax(logits.T[0], dim=-1)
             probs = torch.reshape(probs, (-1,)).detach().cpu().numpy()
