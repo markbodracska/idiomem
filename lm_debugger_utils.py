@@ -817,7 +817,7 @@ def process_preds_and_hidden_states_pythia(sent_to_hidden_states, sent_to_preds,
                 m_tag_coefs_all.append(m_tag_coefs)
 
             # Access the projection weight (dense_4h_to_h) equivalent to c_proj in GPT-2
-            value_norms = torch.linalg.norm(model.gpt_neox.layers[LAYER].mlp.dense_4h_to_h.weight.data, dim=1)
+            value_norms = torch.linalg.norm(model.gpt_neox.layers[LAYER].mlp.dense_4h_to_h.weight.data, dim=0)
             scaled_coefs = np.absolute(m_coefs) * value_norms.cpu().numpy()
 
             for index, prob in enumerate(scaled_coefs):
