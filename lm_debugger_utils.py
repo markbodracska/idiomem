@@ -827,7 +827,7 @@ def process_preds_and_hidden_states_pythia(sent_to_hidden_states, sent_to_preds,
 
         # Access the MLP dense_h_to_4h weight (equivalent to c_fc in GPT-2)
         keys = model.state_dict()['gpt_neox.layers.1.mlp.dense_h_to_4h.weight'].cpu().numpy()
-        keys = np.linalg.norm(keys, axis=0)
+        keys = np.linalg.norm(keys, axis=1)
 
         for LAYER in range(model.config.num_hidden_layers):
             coefs_ = []
