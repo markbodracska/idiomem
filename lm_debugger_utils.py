@@ -155,6 +155,28 @@ def set_control_hooks_gpt2(model, values_per_layer, coef_value=0):
     return hooks
 
 
+def set_control_hooks_pythia(model, values_per_layer, coef_value=0):
+    def change_values(values, coef_val):
+        def hook(module, input, output):
+            output[:, :, values] = coef_val
+        return hook
+
+    hooks = []
+    for l in range(model.config.num_hidden_layers):
+        if l in values_per_layer:
+            values = values_per_layer[l]
+        else:
+            values = []
+        # In Pythia, the MLP input projection is called dense_h_to_4h
+        hook = model.gpt_neox.layers[l].mlp.dense_h_to_4h.register_forward_hook(
+            change_values(values, coef_value)
+        )
+        hooks.append(hook)
+
+    return hooks
+
+
+
 def set_layer_skip_hooks_gpt2(model, layers_to_skip):
     def skip_layer_hook():
         def hook(module, input, output):
@@ -618,7 +640,7 @@ def get_preds_and_hidden_states_pythia(prompts, pythia_model, pythia_tokenizer,
 
         # add knockout hooks
         if knockouts is not None:
-            hooks = set_control_hooks_gpt2(pythia_model, knockouts[prompt])
+            hooks = set_control_hooks_pythia(pythia_model, knockouts[prompt])
         else:
             hooks = []
 

@@ -83,7 +83,7 @@ def main(model, model_type, tokenizer, input_df, sample_size, output_df_path, pr
         if model_type == "gpt2":
             hidden_dim = model.transformer.h[0].mlp.c_proj.weight.size(0)
         else: # pythia
-            hidden_dim = model.gpt_neox.layers[0].mlp.dense_4h_to_h.weight.size(0)
+            hidden_dim = model.gpt_neox.layers[0].mlp.dense_4h_to_h.weight.size(1)
             
         all_dims = np.arange(hidden_dim)
         for r in [1, 2, 3]:
