@@ -72,7 +72,8 @@ def main(model, model_type, tokenizer, input_df, sample_size, output_df_path, pr
         # knockouts of top value vectors in consecutive layers.
         for r in [1, 2, 3, 4, 5]:
             for k in [1, 10, 100, 1000]:
-                if l <= model.config.n_layer - r:
+                #if l <= model.config.n_layer - r:
+                if l <= num_layers - r:
                     prompt_to_rl_all_top_coef_k = {
                         prompt: {l + ri: top_coef[l + ri][:k] for ri in range(r)} for prompt, top_coef in
                         prompt_to_top_coef.items()}
