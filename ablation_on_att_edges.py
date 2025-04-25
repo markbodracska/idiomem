@@ -204,6 +204,8 @@ def main():
     parser.add_argument("--window_sizes", type=int, nargs='+', default=[5], help="List of layer window sizes for edge ablation")
     args = parser.parse_args()
 
+    safe_model_name = args.model_name.replace("/", "_")
+
     model, idioms, idioms_labeled_df = load_data_and_model(args)
     num_layers = model.cfg.n_layers
 
@@ -216,8 +218,8 @@ def main():
                 results = ablate_idiom(model, idiom, idioms_labeled_df, word_type, args.dataset, num_layers, args.device, window_size, args.skip_bos)
                 all_individual_results.extend(results)
                 
-            suffix = f"{args.model_name}_ds-{args.dataset}_wt-{word_type}_ws-{window_size}" + ("_skipbos" if args.skip_bos else "")
-            output_path = args.output_path + f"_{suffix}.csv"
+            suffix = f"{safe_model_name}_ds-{args.dataset}_wt-{word_type}_ws-{window_size}" + ("_skipbos" if args.skip_bos else "")
+            output_path = f"{args.output_path}/{safe_model_name}/{suffix}.csv"
             individual_results_df = pd.DataFrame(all_individual_results)
             individual_results_df.to_csv(output_path, index=False)
 
