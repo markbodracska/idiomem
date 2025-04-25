@@ -993,6 +993,18 @@ def get_examples_df_for_prompts_gpt2(prompts, targets_info, model, tokenizer,
     df = pd.DataFrame(records)
     return df
 
+def get_examples_df_for_prompts_pythia(prompts, targets_info, model, tokenizer,
+                                top_k=100, knockout_config=None,save_keys = True):
+    sent_to_hidden_states, sent_to_preds = get_preds_and_hidden_states_pythia(prompts, model, tokenizer,
+                                                                       target_tokens=targets_info["target_tokens"],
+                                                                       knockouts=knockout_config)
+
+    records = process_preds_and_hidden_states_pythia(sent_to_hidden_states, sent_to_preds,
+                                              model, tokenizer, top_k, targets_info,save_keys = save_keys)
+
+    df = pd.DataFrame(records)
+    return df
+
 
 def get_all_projected_value_vectors(model):
     logits = []

@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from lm_debugger_utils import get_examples_df_for_prompts_gpt2
+from lm_debugger_utils import get_examples_df_for_prompts_gpt2, get_examples_df_for_prompts_pythia
 from transformers import GPT2Tokenizer, GPT2LMHeadModel, AutoTokenizer, AutoModelForMaskedLM, GPTNeoXForCausalLM
 from tqdm import tqdm
 
@@ -118,8 +118,15 @@ def main(model, model_type, tokenizer, input_df, sample_size, output_df_path, pr
     results = []
     for config_name, config in tqdm(configs.items()):
         prompts = list(config.keys())
-        dfko = get_examples_df_for_prompts_gpt2(prompts, targets_info, model, tokenizer,
+        if model_type == "gpt2":
+            dfko = get_examples_df_for_prompts_gpt2(prompts, targets_info, model, tokenizer,
                                            top_k=10, knockout_config=config)
+        else: # pythia
+            dfko = get_examples_df_for_prompts_pythia(prompts, targets_info, model, tokenizer,
+                                           top_k=10, knockout_config=config)
+
+        #dfko = get_examples_df_for_prompts_gpt2(prompts, targets_info, model, tokenizer,
+        #                                   top_k=10, knockout_config=config)
         dfko["config"] = config_name
         results.append(dfko)
 
