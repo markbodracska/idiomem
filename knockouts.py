@@ -5,7 +5,7 @@ import pandas as pd
 import torch
 
 from lm_debugger_utils import get_examples_df_for_prompts_gpt2
-from transformers import GPT2Tokenizer, GPT2LMHeadModel
+from transformers import GPT2Tokenizer, GPT2LMHeadModel, AutoTokenizer, AutoModelForMaskedLM, GPTNeoXForCausalLM
 from tqdm import tqdm
 
 
@@ -123,9 +123,17 @@ def main(model, tokenizer, input_df, sample_size, output_df_path, pred_as_target
 if __name__ == '__main__':
     args = parse_args()
 
-    gpt2_model_name = args.model.strip()
-    tokenizer_ = GPT2Tokenizer.from_pretrained(gpt2_model_name)
-    model_ = GPT2LMHeadModel.from_pretrained(gpt2_model_name)
+    model_name = args.model.strip()
+    if 'gpt2' in model_name:
+        model_ = GPT2LMHeadModel.from_pretrained(model_name)
+        tokenizer_ = GPT2Tokenizer.from_pretrained(model_name)
+        num_layers = model_.config.n_layer
+        model_type = 'gpt2'
+    else: # pythia models
+        model_ = GPTNeoXForCausalLM.from_pretrained(f"EleutherAI/{model_name}")
+        tokenizer_ = AutoTokenizer.from_pretrained(f"EleutherAI/{model_name}")
+        num_layers = model_.config.num_hidden_layers
+        model_type = 'pythia'
 
     if torch.cuda.is_available():
         model_.cuda()
