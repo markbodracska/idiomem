@@ -5,6 +5,7 @@ from tqdm import tqdm
 import argparse
 import transformer_lens
 from transformer_lens import HookedTransformer
+import os
 
 def merge_apostrophe_words(word_labels):
     merged_labels = []
@@ -219,7 +220,9 @@ def main():
                 all_individual_results.extend(results)
                 
             suffix = f"{safe_model_name}_ds-{args.dataset}_wt-{word_type}_ws-{window_size}" + ("_skipbos" if args.skip_bos else "")
-            output_path = f"{args.output_path}/{safe_model_name}/{suffix}.csv"
+            output_dir = os.path.join(args.output_path, safe_model_name)
+            os.makedirs(output_dir, exist_ok=True)
+            output_path = os.path.join(output_dir, f"{suffix}.csv")
             individual_results_df = pd.DataFrame(all_individual_results)
             individual_results_df.to_csv(output_path, index=False)
 
