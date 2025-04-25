@@ -303,7 +303,7 @@ if __name__ == '__main__':
                 , axis=1)
 
             if args.run_knockout:
-                res = knockouts.main(model, tokenizer, memorized_idioms_df,
+                res = knockouts.main(model, model_type, tokenizer, memorized_idioms_df,
                                      sample_size=args.sample_size,
                                      output_df_path=knockouts_out_path,
                                      pred_as_target=args.pred_as_target)

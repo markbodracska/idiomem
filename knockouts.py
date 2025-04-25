@@ -45,7 +45,12 @@ def parse_args():
     return parser.parse_args()
 
 
-def main(model, tokenizer, input_df, sample_size, output_df_path, pred_as_target):
+def main(model, model_type, tokenizer, input_df, sample_size, output_df_path, pred_as_target):
+    if model_type == "gpt2":
+        num_layers = model.config.n_layer
+    else: # pythia
+        num_layers = model.config.num_hidden_layers
+
     if isinstance(input_df, str):
         df = pd.read_pickle(input_df)
         print(f"[-] loaded instances from: {input_df}")
@@ -61,7 +66,8 @@ def main(model, tokenizer, input_df, sample_size, output_df_path, pred_as_target
     # create knockout configurations
     print("[-] creating knockout configurations...")
     configs = {}
-    for l in range(model.config.n_layer):
+    #for l in range(model.config.n_layer):
+    for l in range(num_layers):
 
         # knockouts of top value vectors in consecutive layers.
         for r in [1, 2, 3, 4, 5]:
