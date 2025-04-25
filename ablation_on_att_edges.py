@@ -127,14 +127,14 @@ def load_data_and_model(args):
     return model, idioms, idioms_labeled_df
 
 # one-by-one ablation
-def ablate_idiom(model, idiom, idioms_labeled_df, word_type, dataset_name, num_layers, device, window_size):
+def ablate_idiom(model, idiom, idioms_labeled_df, word_type, dataset_name, num_layers, device, window_size, skip_bos):
     individual_results = []
     
     prefix = idiom.split()[:-1]
     prompt = ' '.join(prefix)
     true_last_word = ' ' + idiom.split()[-1]
 
-    tokens = model.to_tokens(prompt).to(device)[0, :]
+    tokens = model.to_tokens(prompt).to(device)[0, 1:] if skip_bos else model.to_tokens(prompt).to(device)[0, :]
     true_tokenized_ids = model.to_tokens(true_last_word).to(device)[0, 1:]
     full_word_token_id = true_tokenized_ids[0]
 
@@ -213,10 +213,10 @@ def main():
         for window_size in args.window_sizes:
             print(f"Running ablation for word_type={word_type}, window_size={window_size}")
             for idiom in tqdm(idioms, desc=f"{word_type} | window {window_size}"):
-                results = ablate_idiom(model, idiom, idioms_labeled_df, word_type, args.dataset, num_layers, args.device, window_size)
+                results = ablate_idiom(model, idiom, idioms_labeled_df, word_type, args.dataset, num_layers, args.device, window_size, args.skip_bos)
                 all_individual_results.extend(results)
                 
-            suffix = f"{args.model_name}_ds-{args.dataset}_wt-{word_type}_ws-{window_size}"
+            suffix = f"{args.model_name}_ds-{args.dataset}_wt-{word_type}_ws-{window_size}" + ("_skipbos" if args.skip_bos else "")
             output_path = args.output_path + f"_{suffix}.csv"
             individual_results_df = pd.DataFrame(all_individual_results)
             individual_results_df.to_csv(output_path, index=False)
