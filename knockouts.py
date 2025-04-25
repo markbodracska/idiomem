@@ -80,11 +80,16 @@ def main(model, model_type, tokenizer, input_df, sample_size, output_df_path, pr
                     configs[f"layers{l}-{l + r - 1}_top{k}"] = prompt_to_rl_all_top_coef_k
 
         # knockouts of non-top value vectors in consecutive layers.
-        hidden_dim = model.transformer.h[0].mlp.c_proj.weight.size(0)
+        if model_type == "gpt2":
+            hidden_dim = model.transformer.h[0].mlp.c_proj.weight.size(0)
+        else: # pythia
+            hidden_dim = model.gpt_neox.layers[0].mlp.dense_4h_to_h.weight.size(0)
+            
         all_dims = np.arange(hidden_dim)
         for r in [1, 2, 3]:
             for k in [10, 100, 1000]:
-                if l <= model.config.n_layer - r:
+                #if l <= model.config.n_layer - r:
+                if l <= num_layers - r:
                     prompt_to_rl_all_nontop_coef_k = {
                         prompt: {
                             l + ri: np.setdiff1d(all_dims, top_coef[l + ri][:k]).tolist()
